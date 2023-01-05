@@ -1,0 +1,21 @@
+*&---------------------------------------------------------------------*
+*& Report ZBC_TRANSFER_MB51_TO_AL11
+*&---------------------------------------------------------------------*
+*&
+*&---------------------------------------------------------------------*
+REPORT ZBC_TRANSFER_MB51_TO_AL11.
+
+INCLUDE:
+    ZBC_TRANSFER_MB51_TO_AL11_TOP,
+    ZBC_TRANSFER_MB51_TO_AL11_CLS.
+
+AT SELECTION-SCREEN ON VALUE-REQUEST FOR S_TCODE-LOW.
+  "Search Help
+  LCL_MAIN=>GET_SH_VARIANT( ).
+
+START-OF-SELECTION.
+
+  "Get Data
+  LCL_MAIN=>GET_DATA( ).
+
+END-OF-SELECTION.
