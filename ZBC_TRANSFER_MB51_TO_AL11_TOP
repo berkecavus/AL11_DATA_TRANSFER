@@ -1,0 +1,17 @@
+*&---------------------------------------------------------------------*
+*& Include          ZBC_TRANSFER_MB51_TO_AL11_TOP
+*&---------------------------------------------------------------------*
+
+TABLES: TSTC.
+SELECTION-SCREEN BEGIN OF BLOCK b1 WITH FRAME TITLE TEXT-001.
+
+  SELECTION-SCREEN SKIP 1.
+  SELECTION-SCREEN COMMENT /2(75) text-002.
+  SELECTION-SCREEN ULINE /1(79).
+
+  SELECTION-SCREEN SKIP 1.
+  SELECT-OPTIONS : S_TCODE FOR TSTC-TCODE    OBLIGATORY
+                                           NO-EXTENSION
+                                           NO INTERVALS.
+  SELECTION-SCREEN SKIP 1.
+SELECTION-SCREEN END OF BLOCK B1.
