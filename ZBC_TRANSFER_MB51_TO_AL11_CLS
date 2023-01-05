@@ -1,0 +1,166 @@
+*&---------------------------------------------------------------------*
+*& Include          ZBC_TRANSFER_MB51_TO_AL11_CLS
+*&---------------------------------------------------------------------*
+CLASS LCL_MAIN DEFINITION.
+
+  PUBLIC SECTION.
+
+    CLASS-DATA: V_VARIANT TYPE VARID-VARIANT.
+    CLASS-DATA: V_REPORT  TYPE VARID-REPORT.
+
+    CLASS-METHODS:
+      GET_SH_VARIANT,
+      GET_DATA,
+      TRANSFER_AL11     IMPORTING LV_FILE  TYPE DIRNAME_AL11
+                                  IM_TABLE TYPE REF TO DATA,
+      ITAB_TO_XSTRING   IMPORTING IR_DATA_REF       TYPE REF TO DATA
+                        RETURNING VALUE(RV_XSTRING) TYPE XSTRING.
+
+ENDCLASS.
+
+CLASS LCL_MAIN IMPLEMENTATION.
+
+  METHOD GET_SH_VARIANT.
+    DATA: LT_RETURN   TYPE STANDARD TABLE OF DDSHRETVAL.
+
+    CLEAR : V_VARIANT, V_REPORT.
+
+    "Get program name, variant name and variant description
+    SELECT VARID~REPORT,
+           VARIT~VTEXT,
+           VARID~VARIANT
+             FROM VARID
+                INNER JOIN VARIT
+                      ON VARIT~LANGU  EQ @SY-LANGU
+                     AND VARIT~REPORT EQ VARID~REPORT
+                INNER JOIN TSTC
+                      ON TSTC~PGMNA EQ VARID~REPORT
+    INTO TABLE @DATA(LT_VARID)
+           WHERE TCODE IN @S_TCODE.
+
+    SORT LT_VARID BY VARIANT ASCENDING.
+    DELETE ADJACENT DUPLICATES FROM LT_VARID COMPARING VARIANT.
+
+    CALL FUNCTION 'F4IF_INT_TABLE_VALUE_REQUEST'
+      EXPORTING
+        RETFIELD        = 'TCODE'
+        DYNPPROG        = SY-REPID
+        DYNPNR          = SY-DYNNR
+        VALUE_ORG       = 'S'
+      TABLES
+        VALUE_TAB       = LT_VARID
+        RETURN_TAB      = LT_RETURN
+      EXCEPTIONS
+        PARAMETER_ERROR = 1
+        NO_VALUES_FOUND = 2
+        OTHERS          = 3.
+    IF SY-SUBRC IS INITIAL.
+      V_VARIANT = VALUE #( LT_RETURN[ 1 ]-FIELDVAL OPTIONAL ).
+      V_REPORT  = VALUE #( LT_VARID[ VARIANT = V_VARIANT ]-REPORT OPTIONAL ).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD GET_DATA.
+
+    "AL11 folder extension
+    DATA: V_FILE TYPE DIRNAME_AL11
+                          VALUE '/usr/sap/trans/test.xlsx'.
+
+    DATA GR_RCS15001  TYPE REF TO DATA.
+    IF ( V_REPORT IS INITIAL OR V_VARIANT IS INITIAL ).
+      MESSAGE 'Please select variant on search help' TYPE 'S'
+                                             DISPLAY LIKE 'E'.
+    ELSE.
+      TRY.
+          "Getting the data of the variant in the selected program
+          CL_SALV_BS_RUNTIME_INFO=>SET( EXPORTING DISPLAY  = ABAP_FALSE
+                                                  METADATA = ABAP_FALSE
+                                                  DATA     = ABAP_TRUE ).
+
+          SUBMIT (V_REPORT)  USING SELECTION-SET V_VARIANT
+                                      AND RETURN.
+
+          CL_SALV_BS_RUNTIME_INFO=>GET_DATA_REF(
+                    IMPORTING R_DATA = GR_RCS15001 ).
+
+          "Transfer AL11
+          LCL_MAIN=>TRANSFER_AL11(
+            EXPORTING
+              LV_FILE  = V_FILE
+              IM_TABLE = GR_RCS15001
+          ).
+
+        CATCH CX_ROOT INTO DATA(LX_ROOT).
+          DATA(ERROR) = LX_ROOT->GET_TEXT( ).
+          MESSAGE ERROR TYPE 'S'
+                        DISPLAY LIKE 'E'.
+      ENDTRY.
+    ENDIF.
+  ENDMETHOD.
+
+  METHOD TRANSFER_AL11.
+
+    "Convert records to xstring
+    DATA(LV_XSTRING) = LCL_MAIN=>ITAB_TO_XSTRING( IR_DATA_REF = IM_TABLE ).
+
+    "Open AL11 folder extension
+    OPEN DATASET LV_FILE FOR OUTPUT IN BINARY MODE.
+
+    IF SY-SUBRC EQ 0.
+      "Transfer records to file extension in excel format
+      TRANSFER LV_XSTRING TO LV_FILE.
+      CLOSE DATASET LV_FILE.
+
+      MESSAGE 'File successfully saved to AL11' TYPE 'S'.
+    ELSE.
+      MESSAGE ID SY-MSGID TYPE SY-MSGTY
+            NUMBER SY-MSGNO
+              WITH SY-MSGV1 SY-MSGV2
+                   SY-MSGV3 SY-MSGV4
+      INTO DATA(LV_MSG).
+    ENDIF.
+
+  ENDMETHOD.
+
+  METHOD ITAB_TO_XSTRING.
+
+    FIELD-SYMBOLS: <FS_DATA> TYPE ANY TABLE.
+
+    CLEAR RV_XSTRING.
+    ASSIGN IR_DATA_REF->* TO <FS_DATA>.
+
+    TRY.
+
+        CL_SALV_TABLE=>FACTORY(
+          IMPORTING R_SALV_TABLE = DATA(LO_TABLE)
+          CHANGING  T_TABLE      = <FS_DATA> ).
+
+        DATA(LT_FCAT) =
+          CL_SALV_CONTROLLER_METADATA=>GET_LVC_FIELDCATALOG(
+            R_COLUMNS      = LO_TABLE->GET_COLUMNS( )
+            R_AGGREGATIONS = LO_TABLE->GET_AGGREGATIONS( ) ).
+
+        DATA(LO_RESULT) =
+          CL_SALV_EX_UTIL=>FACTORY_RESULT_DATA_TABLE(
+            R_DATA         = IR_DATA_REF
+            T_FIELDCATALOG = LT_FCAT ).
+
+        CL_SALV_BS_TT_UTIL=>IF_SALV_BS_TT_UTIL~TRANSFORM(
+          EXPORTING
+            XML_TYPE      = IF_SALV_BS_XML=>C_TYPE_XLSX
+            XML_VERSION   = CL_SALV_BS_A_XML_BASE=>GET_VERSION( )
+            R_RESULT_DATA = LO_RESULT
+            XML_FLAVOUR   = IF_SALV_BS_C_TT=>C_TT_XML_FLAVOUR_EXPORT
+            GUI_TYPE      = IF_SALV_BS_XML=>C_GUI_TYPE_GUI
+          IMPORTING
+            XML           = RV_XSTRING ).
+
+      CATCH CX_ROOT INTO DATA(LX_ROOT).
+        DATA(LV_MSG) = LX_ROOT->GET_TEXT( ).
+        MESSAGE LV_MSG TYPE 'S' DISPLAY LIKE 'E'.
+    ENDTRY.
+
+  ENDMETHOD.
+
+ENDCLASS.
