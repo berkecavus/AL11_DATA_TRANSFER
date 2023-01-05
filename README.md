@@ -1,2 +1,3 @@
-# AL11_DATA_TRANSFER
-Transferring the data of the desired transaction code to AL11
+Hello everyone,
+
+I aimed to transfer the data of the selected variant of the operation code entered in this program to AL11.
